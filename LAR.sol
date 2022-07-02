@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.7.4;
+pragma solidity 0.7.4;
 
 library SafeMathInt {
     int256 private constant MIN_INT256 = int256(1) << 255;
@@ -34,34 +34,10 @@ library SafeMathInt {
         return c;
     }
 
-    function abs(int256 a) internal pure returns (int256) {
-        require(a != MIN_INT256,
-            'abs overflow');
-        return a < 0 ? -a : a;
-    }
-
-    function max(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a >= b ? a : b;
-    }
-
-    function min(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a < b ? a : b;
-    }
 }
 
-abstract contract Context {
-    function _msgSender() internal view virtual returns (address payable) {
-        return payable(msg.sender);
-    }
-
-    function _msgData() internal view virtual returns (bytes memory) {
-        this;
-        return msg.data;
-    }
-}
-
-abstract contract Auth is Context{
-    address owner;
+abstract contract Auth {
+    address public owner;
     mapping (address => bool) private authorizations;
 
     constructor(address _owner) {
@@ -77,12 +53,12 @@ abstract contract Auth is Context{
         require(isAuthorized(msg.sender)); _;
     }
 
-    function authorize(address adr) public onlyOwner {
+    function authorize(address adr) external onlyOwner {
         authorizations[adr] = true;
         emit Authorized(adr);
     }
 
-    function unauthorize(address adr) public onlyOwner {
+    function unauthorize(address adr) external onlyOwner {
         authorizations[adr] = false;
         emit Unauthorized(adr);
     }
@@ -95,7 +71,7 @@ abstract contract Auth is Context{
         return authorizations[adr];
     }
 
-    function transferOwnership(address payable adr) public onlyOwner {
+    function transferOwnership(address payable adr) external onlyOwner {
         owner = adr;
         authorizations[adr] = true;
         authorizations[msg.sender] = false;
@@ -185,19 +161,6 @@ library SafeMath {
         return c;
     }
 
-    function mod(uint256 a, uint256 b) internal pure returns (uint256) {
-        require(b != 0,
-            'parameter 2 can not be 0');
-        return a % b;
-    }
-
-    function max(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a >= b ? a : b;
-    }
-
-    function min(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a < b ? a : b;
-    }
 }
 
 abstract contract ERC20Detailed is IERC20 {
@@ -215,15 +178,15 @@ abstract contract ERC20Detailed is IERC20 {
         _decimals = _tokenDecimals;
     }
 
-    function name() public view returns (string memory) {
+    function name() external view returns (string memory) {
         return _name;
     }
 
-    function symbol() public view returns (string memory) {
+    function symbol() external view returns (string memory) {
         return _symbol;
     }
 
-    function decimals() public view returns (uint8) {
+    function decimals() external view returns (uint8) {
         return _decimals;
     }
 }
@@ -295,15 +258,14 @@ contract LAR is ERC20Detailed, Auth {
     bool public swapEnabled = true;
     bool public isLiquidityInBnb = false;
 
-    uint256 public rebaseIndex = 1 * 10**18;
-    uint256 private oneEEighteen = 1 * 10**18;
+    uint256 public rebaseIndex = 1 * 10**18; // Keep track of how total rebase yield
     uint256 private REWARD_YIELD_DENOMINATOR = 10000000000000000;
     uint256 public rewardYield = 4166700000000; 
     uint256 public maxSellTransactionAmount = 5000 * 10**18;
 
     uint256 public rebaseFrequency = 1800;
     uint256 public nextRebase = block.timestamp + 31536000;
-    uint256 public rebaseEpoch = 0;
+    uint256 public rebaseEpoch = 0; // Keep track of how many rebases have occurred 
     uint256 public _markerPairCount;
     
     address[] public _markerPairs;
@@ -312,6 +274,7 @@ contract LAR is ERC20Detailed, Auth {
     mapping(address => bool) public automatedMarketMakerPairs;
     mapping(address => bool) public blacklist;
 
+    uint256 private constant oneEEighteen = 1 * 10**18;
     uint256 private constant MAX_FEE_RATE = 300;
     uint256 private constant MIN_SELL_AMOUNT_RATE = 5000 * 10**18;
     uint256 private constant MAX_REBASE_FREQUENCY = 1800;
@@ -338,7 +301,7 @@ contract LAR is ERC20Detailed, Auth {
     IDEXRouter public router;
     IDEXFactory private factory;
     address public pair;
-    address public usdtToken = 0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56;
+    address public constant busdToken = 0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56;
 
     uint256 public liquidityFee = 50;
     uint256 public treasuryFee = 50;
@@ -366,7 +329,7 @@ contract LAR is ERC20Detailed, Auth {
 
     uint256 private _totalSupply;
     uint256 private _gonsPerFragment;
-    uint256 private gonSwapThreshold = (TOTAL_GONS * 10) / 10000;
+    uint256 private gonSwapThreshold = TOTAL_GONS / 1000;
     
     mapping(address => uint256) private _gonBalances;
     mapping(address => mapping(address => uint256)) private _allowedFragments;
@@ -379,7 +342,7 @@ contract LAR is ERC20Detailed, Auth {
         );
         address pairBusd = IDEXFactory(router.factory()).createPair(
             address(this),
-            usdtToken
+            busdToken
         );
 
         _allowedFragments[address(this)][address(router)] = uint256(-1);
@@ -399,9 +362,9 @@ contract LAR is ERC20Detailed, Auth {
         _isFeeExempt[address(this)] = true;
         _isFeeExempt[msg.sender] = true;
 
-        IERC20(usdtToken).approve(address(router), type(uint256).max);
-        IERC20(usdtToken).approve(address(pairBusd), type(uint256).max);
-        IERC20(usdtToken).approve(address(this), type(uint256).max);
+        IERC20(busdToken).approve(address(router), type(uint256).max);
+        IERC20(busdToken).approve(address(pairBusd), type(uint256).max);
+        IERC20(busdToken).approve(address(this), type(uint256).max);
 
         emit Transfer(address(0x0), msg.sender, _totalSupply);
     }
@@ -421,15 +384,15 @@ contract LAR is ERC20Detailed, Auth {
         return _allowedFragments[owner_][spender];
     }
 
-    function balanceOf(address who) public view override returns (uint256) {
+    function balanceOf(address who) external view override returns (uint256) {
         return _gonBalances[who].div(_gonsPerFragment);
     }
 
-    function markerPairAddress(uint256 value) public view returns (address) {
+    function markerPairAddress(uint256 value) external view returns (address) {
         return _markerPairs[value];
     }
 
-    function currentIndex() public view returns (uint256) {
+    function currentIndex() external view returns (uint256) {
         return rebaseIndex;
     }
 
@@ -464,20 +427,20 @@ contract LAR is ERC20Detailed, Auth {
         _gonBalances[address(this)] >= gonSwapThreshold;
     }
 
-    function getGonBalances() public view returns (bool thresholdReturn, uint256 gonBalanceReturn ) {
+    function getGonBalances() external view returns (bool thresholdReturn, uint256 gonBalanceReturn ) {
         thresholdReturn  = _gonBalances[address(this)] >= gonSwapThreshold;
         gonBalanceReturn = _gonBalances[address(this)];
 
     }
 
-    function getCirculatingSupply() public view returns (uint256) {
+    function getCirculatingSupply() external view returns (uint256) {
         return
         (TOTAL_GONS.sub(_gonBalances[DEAD]).sub(_gonBalances[ZERO])).div(
             _gonsPerFragment
         );
     }
 
-    function getCurrentTimestamp() public view returns (uint256) {
+    function getCurrentTimestamp() external view returns (uint256) {
         return block.timestamp;
     }
 
@@ -587,11 +550,11 @@ contract LAR is ERC20Detailed, Auth {
 
             emit SwapAndLiquify(half, newBalance, otherHalf);
         } else {
-            uint256 initialBalance = IERC20(usdtToken).balanceOf(address(this));
+            uint256 initialBalance = IERC20(busdToken).balanceOf(address(this));
 
             _swapTokensForBusd(half, address(this));
 
-            uint256 newBalance = IERC20(usdtToken).balanceOf(address(this)).sub(
+            uint256 newBalance = IERC20(busdToken).balanceOf(address(this)).sub(
                 initialBalance
             );
 
@@ -618,7 +581,7 @@ contract LAR is ERC20Detailed, Auth {
     {
         router.addLiquidity(
             address(this),
-            usdtToken,
+            busdToken,
             tokenAmount,
             busdAmount,
             0,
@@ -647,7 +610,7 @@ contract LAR is ERC20Detailed, Auth {
     function _swapTokensForBusd(uint256 tokenAmount, address receiver) private {
         address[] memory path = new address[](2);
         path[0] = address(this);
-        path[1] = usdtToken;
+        path[1] = busdToken;
 
         router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
             tokenAmount,
@@ -810,7 +773,7 @@ contract LAR is ERC20Detailed, Auth {
     }
 
     function updateRebaseIndex() private {
-
+        // Function used to keep track of rebase yields in order to develop wrapped version of LAR
         nextRebase += rebaseFrequency;
 
         rebaseIndex = rebaseIndex
@@ -840,10 +803,11 @@ contract LAR is ERC20Detailed, Auth {
             _markerPairs.push(_pair);
             _markerPairCount++;
         } else {
-            require(_markerPairs.length > 1, 'Required 1 pair');
-            for (uint256 i = 0; i < _markerPairs.length; i++) {
+            uint256 pairsLength = _markerPairs.length;
+            require(pairsLength > 1, 'Required 1 pair');
+            for (uint256 i = 0; i < pairsLength; i++) {
                 if (_markerPairs[i] == _pair) {
-                    _markerPairs[i] = _markerPairs[_markerPairs.length - 1];
+                    _markerPairs[i] = _markerPairs[pairsLength - 1];
                     _markerPairs.pop();
                     break;
                 }
